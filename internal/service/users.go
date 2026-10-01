@@ -94,8 +94,8 @@ func (s *Service) LoginKyros(ctx context.Context, email, subject, name string, a
 		_ = s.Store.UpdateUser(ctx, user)
 		return user, nil
 	}
-	if !errors.Is(err, store.ErrNotFound) {
-		return nil, err
+	if !errors.Is(existingErr, store.ErrNotFound) {
+		return nil, existingErr
 	}
 	if !autoProvision {
 		return nil, ErrUnauthorized
@@ -108,7 +108,8 @@ func (s *Service) LoginKyros(ctx context.Context, email, subject, name string, a
 	// If a local Aegis account already exists with the verified Kyros e-mail,
 	// link the Kyros subject to that account instead of creating a duplicate.
 	// The provider subject remains the primary external identity key.
-	if existing, err := s.Store.GetUserByEmail(ctx, email); err == nil {
+	existing, existingErr := s.Store.GetUserByEmail(ctx, email)
+	if existingErr == nil {
 		if existing.Status != store.UserActive {
 			return nil, ErrUnauthorized
 		}
