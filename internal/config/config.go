@@ -165,6 +165,13 @@ func Load(path string) (*Config, error) {
 		}
 		return out
 	}
+	getSpaceList := func(key string, def []string) []string {
+		v := get(key, "")
+		if v == "" {
+			return def
+		}
+		return strings.Fields(v)
+	}
 
 	env := get("AEGIS_ENV", "production")
 	c := &Config{
@@ -192,12 +199,12 @@ func Load(path string) (*Config, error) {
 		LoginRateLimitPerMinute: getInt("AEGIS_LOGIN_RATE_LIMIT", 10),
 		APIRateLimitPerMinute:   getInt("AEGIS_API_RATE_LIMIT", 300),
 
-		KyrosEnabled:                 getBool("AEGIS_KYROS_ENABLED", false),
-		KyrosIssuer:                  strings.TrimRight(get("AEGIS_KYROS_ISSUER", ""), "/"),
-		KyrosClientID:                get("AEGIS_KYROS_CLIENT_ID", ""),
-		KyrosClientSecret:            get("AEGIS_KYROS_CLIENT_SECRET", ""),
-		KyrosRedirectURL:             get("AEGIS_KYROS_REDIRECT_URL", ""),
-		KyrosScopes:                  getList("AEGIS_KYROS_SCOPES", []string{"openid", "profile", "email"}),
+		KyrosEnabled:                 strings.EqualFold(get("AUTH_PROVIDER", ""), "kyros"),
+		KyrosIssuer:                  get("KYROS_ISSUER", ""),
+		KyrosClientID:                get("KYROS_CLIENT_ID", ""),
+		KyrosClientSecret:            get("KYROS_CLIENT_SECRET", ""),
+		KyrosRedirectURL:             get("KYROS_REDIRECT_URI", strings.TrimRight(get("AEGIS_PUBLIC_URL", "https://vpn.example.com"), "/")+"/api/v1/auth/kyros/callback"),
+		KyrosScopes:                  getSpaceList("KYROS_REQUESTED_SCOPE", []string{"profile", "email"}),
 		KyrosButtonLabel:             get("AEGIS_KYROS_BUTTON_LABEL", "Se connecter avec Kyros"),
 		KyrosInsecureSkipIssuerCheck: getBool("AEGIS_KYROS_SKIP_ISSUER_CHECK", false),
 
@@ -236,13 +243,13 @@ func Load(path string) (*Config, error) {
 	}
 	if c.KyrosEnabled {
 		if c.KyrosIssuer == "" {
-			return nil, fmt.Errorf("AEGIS_KYROS_ISSUER is required when Kyros is enabled")
+			return nil, fmt.Errorf("KYROS_ISSUER is required when AUTH_PROVIDER=kyros")
 		}
 		if c.KyrosClientID == "" {
-			return nil, fmt.Errorf("AEGIS_KYROS_CLIENT_ID is required when Kyros is enabled")
+			return nil, fmt.Errorf("KYROS_CLIENT_ID is required when AUTH_PROVIDER=kyros")
 		}
 		if c.KyrosRedirectURL == "" {
-			return nil, fmt.Errorf("AEGIS_KYROS_REDIRECT_URL is required when Kyros is enabled")
+			return nil, fmt.Errorf("KYROS_REDIRECT_URI or AEGIS_PUBLIC_URL is required when AUTH_PROVIDER=kyros")
 		}
 	}
 	if err := validateNetwork(c.WGNetwork); err != nil {

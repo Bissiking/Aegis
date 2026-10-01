@@ -164,7 +164,7 @@ func TestNoKeyMaterialIsCommitted(t *testing.T) {
 		"-----BEGIN ",
 		"AEGIS_SESSION_SECRET=",
 		"AEGIS_AGENT_TOKEN=",
-		"AEGIS_KYROS_CLIENT_SECRET=",
+		"KYROS_CLIENT_SECRET=",
 	}
 	violations := []string{}
 	walkFiles(t, root, func(rel string, data []byte) {

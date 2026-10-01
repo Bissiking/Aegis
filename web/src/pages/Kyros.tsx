@@ -34,7 +34,7 @@ export default function Kyros() {
               ? status.ready
                 ? 'Adaptateur configuré et découverte OIDC réussie.'
                 : `Configuré mais non prêt : ${status.detail ?? 'découverte échouée'}`
-              : 'Connexion Kyros désactivée par configuration (AEGIS_KYROS_ENABLED=false).'}
+              : 'Connexion Kyros désactivée par configuration (AUTH_PROVIDER n’est pas défini sur kyros).'}
           </div>
 
           <div className="card">
