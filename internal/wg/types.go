@@ -36,6 +36,7 @@ type PeerState struct {
 // State is the runtime state of an interface.
 type State struct {
 	Interface   string      `json:"interface"`
+	PublicKey   string      `json:"public_key"`
 	ListenPort  int         `json:"listen_port"`
 	Peers       []PeerState `json:"peers"`
 	CollectedAt time.Time   `json:"collected_at"`
