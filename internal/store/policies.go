@@ -57,7 +57,7 @@ func (s *Store) ListIdentities(ctx context.Context, userID string) ([]*Identity,
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*Identity
+	out := make([]*Identity, 0)
 	for rows.Next() {
 		i := &Identity{}
 		var last sql.NullInt64
@@ -155,7 +155,7 @@ func (s *Store) ListPolicies(ctx context.Context) ([]*AccessPolicy, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*AccessPolicy
+	out := make([]*AccessPolicy, 0)
 	for rows.Next() {
 		p := &AccessPolicy{}
 		var full, react int
