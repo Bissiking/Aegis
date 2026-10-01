@@ -100,12 +100,62 @@ func (s *Service) LoginKyros(ctx context.Context, email, subject, name string, a
 	if !autoProvision {
 		return nil, ErrUnauthorized
 	}
+	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
 		return nil, ErrUnauthorized
 	}
-	// Never map on the e-mail address alone: the subject is the primary key.
-	if _, err := s.Store.GetUserByEmail(ctx, email); err == nil {
-		return nil, ErrForbidden
+
+	// If a local Aegis account already exists with the verified Kyros e-mail,
+	// link the Kyros subject to that account instead of creating a duplicate.
+	// The provider subject remains the primary external identity key.
+	if existing, err := s.Store.GetUserByEmail(ctx, email); err == nil {
+		if existing.Status != store.UserActive {
+			return nil, ErrUnauthorized
+		}
+
+		identities, err := s.Store.ListIdentities(ctx, existing.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, linked := range identities {
+			if linked.Provider == "kyros" && linked.ProviderSubject != subject {
+				return nil, ErrForbidden
+			}
+		}
+
+		identity := &store.Identity{
+			ID:              store.NewID("idn"),
+			UserID:          existing.ID,
+			Provider:        "kyros",
+			ProviderSubject: subject,
+			Email:           email,
+		}
+		if err := s.Store.CreateIdentity(ctx, identity); err != nil {
+			if !errors.Is(err, store.ErrConflict) {
+				return nil, err
+			}
+			// Handle concurrent callbacks safely: only accept the conflict when
+			// the subject ended up linked to the same Aegis account.
+			linked, lookupErr := s.Store.GetIdentity(ctx, "kyros", subject)
+			if lookupErr != nil || linked.UserID != existing.ID {
+				return nil, ErrForbidden
+			}
+			identity = linked
+		}
+
+		_ = s.Store.TouchIdentity(ctx, identity.ID, email)
+		now := s.Store.Now().Unix()
+		existing.LastLoginAt = &now
+		if existing.DisplayName == "" && name != "" {
+			existing.DisplayName = name
+		}
+		if err := s.Store.UpdateUser(ctx, existing); err != nil {
+			return nil, err
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
 	}
 	return s.provisionKyrosUser(ctx, email, subject, name)
 }
