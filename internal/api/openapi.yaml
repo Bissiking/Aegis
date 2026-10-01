@@ -85,7 +85,7 @@ paths:
   /auth/kyros/callback:
     get:
       tags: [auth]
-      summary: OIDC callback (redirects back to the panel)
+      summary: Kyros SSO v4 callback (redirects back to the panel)
       security: []
       responses:
         "302": { description: Redirect }

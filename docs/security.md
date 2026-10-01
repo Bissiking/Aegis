@@ -13,6 +13,16 @@
 Out of scope for the MVP: a compromised kernel, a compromised build chain,
 and physical access to the host.
 
+### Kyros SSO v4 abuse cases
+
+| Abuse case | Impact | Mitigation / evidence |
+| ---------- | ------ | --------------------- |
+| Authorization response injected or replayed | Session opened for the wrong flow | 256-bit `state`, stored hashed, ten-minute TTL, single-use consumption; callback `iss` check |
+| Authorization code intercepted | Account takeover | PKCE S256 is sent through mandatory PAR and the verifier stays server-side |
+| Token issued for another service reused | Cross-service impersonation | Exact `aud`, `resource_aud` and `client_id` checks |
+| Forged, downgraded or stale token | Authentication bypass | RS256 allow-list, `kid` lookup through JWKS, signature, `exp`, `nbf` and `sso_version=v4` checks |
+| Secret or bearer token leaked through observability | Credential replay | Tokens are validated in memory then discarded; errors/logs contain only sanitized operation and error codes |
+
 ## Design decisions
 
 **Least privilege, split in two.** `aegis` runs as an unprivileged system user
@@ -34,6 +44,11 @@ enforced by tests (`TestSecretsNeverAppearInListingsOrAudit`,
 stores only its SHA-256. Passwords use Argon2id (default t=3, m=64 MiB, p=2,
 32-byte tag). OAuth state is stored hashed. `/etc/aegis/aegis.env` is
 `0600 root:aegis`.
+
+**Kyros trust boundary.** SSO v4 uses PAR and PKCE S256. Access tokens are
+accepted only with an RS256 signature from the configured JWKS and matching
+`iss`, `aud`, `resource_aud`, `client_id`, `sub`, `exp`, `nbf`, version and
+required scopes. Tokens and the client secret are never logged or persisted.
 
 **Headers.** Every response sets `X-Content-Type-Options`, `X-Frame-Options:
 DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`,
@@ -96,9 +111,10 @@ for API responses. HSTS is emitted when `AEGIS_COOKIE_SECURE=true`.
 7. **SQLite single-writer.** Concurrency is bounded by one writer connection;
    this is intentional and sufficient for a control plane, not for data-plane
    traffic.
-8. **Kyros integration is untested against a real IdP** in this repository: the
-   adapter implements standard OIDC code flow + PKCE with discovery, but no
-   Kyros credentials were available. See `docs/kyros-integration.md`.
+8. **Kyros integration is untested against a production Kyros instance** in
+   this repository. The native v4 flow is tested against a local protocol
+   fixture with real RS256 signatures, but production registration, TLS and
+   key rotation must still be exercised. See `docs/kyros-integration.md`.
 9. **No 2FA, no audit log shipping, no RBAC beyond `admin`/`user`.**
 10. **The agent trusts the socket group.** Any process able to write to
     `/run/aegis/agent.sock` as group `aegis` can add or remove peers. Keep the

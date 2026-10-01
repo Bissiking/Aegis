@@ -45,8 +45,9 @@ Two mechanisms:
 * **Local** — `POST /api/v1/auth/login` with `{email, password}`. On success
   the server sets two cookies (`aegis_session` HttpOnly, `aegis_csrf` readable
   by the SPA) and returns `csrf_token` in the body.
-* **Kyros (OIDC)** — `GET /api/v1/auth/kyros/start` redirects to the IdP;
-  `GET /api/v1/auth/kyros/callback` completes code+PKCE and starts a session.
+* **Kyros SSO v4** — `GET /api/v1/auth/kyros/start` creates a PAR and redirects
+  to Kyros; `GET /api/v1/auth/kyros/callback` validates code+PKCE and the RS256
+  access token before starting a local Aegis session.
 
 Every **non-GET** request on an authenticated route must send
 `X-CSRF-Token: <csrf_token>`. `GET`, `HEAD` and `OPTIONS` are exempt.
@@ -62,7 +63,7 @@ Every **non-GET** request on an authenticated route must send
 | POST   | `/api/v1/auth/login`        | local login, throttled per IP          |
 | POST   | `/api/v1/auth/logout`       | destroys the session                   |
 | GET    | `/api/v1/auth/kyros/start`  | redirect to the IdP                    |
-| GET    | `/api/v1/auth/kyros/callback`| OIDC callback                          |
+| GET    | `/api/v1/auth/kyros/callback`| Kyros SSO v4 callback                  |
 | GET    | `/api/v1/openapi.yaml`      | OpenAPI 3 document                     |
 
 ### Authenticated (session required)

@@ -1,103 +1,104 @@
-# Kyros integration (generic OIDC)
+# Intégration native Kyros SSO v4
 
-Aegis talks to Kyros through a **standard OpenID Connect client**. No Kyros
-endpoint, scope, claim name or proprietary API is invented or hard-coded: the
-adapter discovers everything from
-`{AEGIS_KYROS_ISSUER}/.well-known/openid-configuration`.
+Aegis utilise le contrat Kyros SSO v4 directement. Il ne s’agit pas d’un
+client OpenID Connect générique : `KYROS_ISSUER=kyros` est un identifiant de
+jeton et non une URL. La découverte est toujours chargée depuis
+`{KYROS_BASE_URL}/.well-known/kyros-configuration`.
 
-Implementation: `internal/auth/kyros.go` (provider) and
-`internal/api/handlers_auth.go` (start/callback handlers).
+L’implémentation se trouve dans `internal/auth/kyros.go`; les routes de départ
+et de callback sont dans `internal/api/handlers_auth.go`.
 
-## What is implemented
+## Garanties implémentées
 
-* Authorization Code flow with **PKCE (S256)** and a `nonce`.
-* Issuer/audience/signature/expiry/nonce validation of the `id_token` via
-  `github.com/coreos/go-oidc/v3` (JWKS fetched from discovery).
-* State stored **hashed** with a 10-minute expiry (`oauth_states` table),
-  single use.
-* Stable account linkage on the `sub` claim — never on the email address.
-* Auto-provisioning: the first successful login creates an Aegis user
-  (`role=user`, status active) and links `identities(provider=kyros)`.
-* Scopes are configurable; defaults are `openid profile email`.
-* Failures never touch WireGuard: if Kyros is unreachable, local login still
-  works and tunnels stay up (covered by `TestKyrosOutageDoesNotTouchTunnels`).
-* Status endpoint `GET /api/v1/admin/kyros` reports whether discovery
-  succeeded.
-
-## What Kyros must provide (currently unknown)
-
-Nothing below was available while building this repository, so none of it is
-assumed anywhere in the code. Collect it from the Kyros client registration:
-
-| Value              | Where it goes                                   | Notes |
-| ------------------ | ----------------------------------------------- | ----- |
-| Issuer URL         | `KYROS_ISSUER`                            | must serve `/.well-known/openid-configuration` |
-| Client ID          | `KYROS_CLIENT_ID`                         | public identifier of the Aegis client |
-| Client secret      | `KYROS_CLIENT_SECRET`                     | only if Kyros marks the client as confidential |
-| Redirect URI       | `KYROS_REDIRECT_URI`                      | must match the registration **exactly**: `https://<your-domain>/api/v1/auth/kyros/callback` |
-| Scopes             | `KYROS_REQUESTED_SCOPE`                            | space separated; `openid` is mandatory |
-| Button label       | `AEGIS_KYROS_BUTTON_LABEL`                      | shown on the login page |
-| Is PKCE required?  | —                                               | Aegis always sends `code_challenge_method=S256`; confirm Kyros accepts it |
-| Claim: `sub`       | read as the stable identity                     | **must** be present and stable |
-| Claim: `email`     | read for display/initial value                  | optional; used only if present |
-| Claim: `name`      | read for display name                           | optional |
-| Groups/roles claim | **not read**                                     | Aegis has no RBAC mapping yet — see "Not implemented" |
-| Logout endpoint    | `auth.KyrosProvider.LogoutURL` is available but not wired to a route | see "Not implemented" |
-| Issuer behind a self-signed certificate? | `AEGIS_KYROS_SKIP_ISSUER_CHECK` | development only |
+- Authorization Code avec PKCE S256.
+- Pushed Authorization Requests (PAR), obligatoire avant la redirection.
+- Handshake `kyros_sso_version`, `kyros_edition` et
+  `kyros_application_scope` envoyé à `/par` et `/token`.
+- `state` aléatoire stocké haché, valable dix minutes et consommable une fois.
+- Vérification du paramètre `iss` de la réponse d’autorisation.
+- Validation de l’access token avec une clé `kid` du JWKS et uniquement
+  l’algorithme RS256.
+- Vérification obligatoire de `iss`, `aud`, `resource_aud`, `client_id`,
+  `sub`, `exp`, `nbf`, `sso_version=v4` et de chaque scope requis.
+- Liaison du compte sur `sub`, jamais sur l’adresse e-mail.
+- Création d’une session Aegis locale après validation ; aucun token Kyros
+  n’est conservé dans la session ou en base.
+- Aucun secret, code ou token n’est inclus dans les réponses, audits ou logs.
+- Le login local reste indépendant et disponible quand Kyros est indisponible.
 
 ## Configuration
 
 ```ini
 AUTH_PROVIDER=kyros
-KYROS_ISSUER=kyros
+KYROS_SSO_VERSION=v4
+KYROS_BASE_URL=https://kyros.example.com
 KYROS_CLIENT_ID=aegis-panel
-KYROS_CLIENT_SECRET=<from the Kyros registration>
-KYROS_REDIRECT_URI=https://vpn.example.com/api/v1/auth/kyros/callback
+KYROS_CLIENT_SECRET=<secret fourni par Kyros>
+KYROS_ISSUER=kyros
+KYROS_AUDIENCE=kyros-modules
+KYROS_RESOURCE_AUDIENCE=kyros:sso:aegis
 KYROS_REQUESTED_SCOPE=profile email
-AEGIS_KYROS_BUTTON_LABEL=Se connecter avec Kyros
-AEGIS_KYROS_SKIP_ISSUER_CHECK=false
+KYROS_REQUIRED_SCOPES=profile email
+KYROS_EDITION=standard
+KYROS_APPLICATION_SCOPE=standard
+KYROS_TIMEOUT_SECONDS=5
+KYROS_AUTHORIZE_URL=https://kyros.example.com/authorize
+KYROS_TOKEN_URL=https://kyros.example.com/token
+KYROS_PAR_URL=https://kyros.example.com/par
+KYROS_JWKS_URL=https://kyros.example.com/sso/v4/jwks
 ```
 
-Restart the panel after editing. Kyros is enabled when `AUTH_PROVIDER=kyros`.
-Any other value disables the Kyros login path.
+Les quatre URL d’endpoint peuvent être laissées vides : Aegis utilise alors
+les valeurs publiées par la découverte Kyros. Lorsqu’elles sont renseignées,
+elles servent d’override explicite. La découverte reste obligatoire afin de
+confirmer le support de SSO v4, PKCE S256 et RS256.
 
-Local login stays available as long as `AEGIS_LOCAL_AUTH_ENABLED=true`, which
-is the recommended safety net while the IdP is being configured.
+L’URI de callback n’ajoute pas de variable Kyros spécifique. Elle est dérivée
+de `AEGIS_PUBLIC_URL` :
+`https://<domaine>/api/v1/auth/kyros/callback`. Elle doit être enregistrée à
+l’identique dans Kyros.
 
-## Flow
+`KYROS_CLIENT_SECRET` peut rester vide pour un client public autorisé par
+Kyros. En production, conserver les secrets dans `/etc/aegis/aegis.env` avec
+les permissions prévues par l’installateur.
 
-1. `GET /api/v1/auth/kyros/start?next=/devices`
-   → state+nonce+verifier created (state hashed, 10 min TTL),
-   → 302 to the authorization endpoint from discovery.
-2. Kyros authenticates the user and redirects to
-   `GET /api/v1/auth/kyros/callback?code=…&state=…`.
-3. State is checked (hash lookup, not expired, single use), the code is
-   exchanged with the PKCE verifier, the `id_token` is verified.
-4. `sub` is looked up in `identities`; on first login the user is created.
-5. A normal Aegis session is issued (same cookies, same CSRF rules as local
-   login) and the user is redirected to `next` (validated by `safeRedirect`).
+Le fournisseur est activé uniquement avec `AUTH_PROVIDER=kyros`. Garder
+`AEGIS_LOCAL_AUTH_ENABLED=true` fournit le secours local recommandé.
 
-## Not implemented (needs a decision or Kyros details)
+## Déroulement
 
-* **Role/group mapping** from a claims source (e.g. `roles`, `groups`,
-  `realm_access`). Aegis currently grants `user` to every Kyros login; only
-  the local bootstrap administrator has `admin`.
-* **Single logout (RP-initiated)** — `LogoutURL()` exists but no route calls it.
-* **Token refresh** — sessions are Aegis sessions; the ID token is not kept
-  after the exchange, so long-lived IdP sessions are irrelevant here.
-* **Account de-provisioning on IdP side** — suspend/delete must be done in
-  Aegis today.
-* **Tested against a real Kyros deployment** — no credentials were available.
-  Everything above is verified by unit tests against the standard OIDC
-  contract, not against your IdP.
+1. `GET /api/v1/auth/kyros/start?next=/devices` génère `state`, le verifier
+   PKCE et le challenge S256.
+2. Aegis envoie ces données et le handshake Kyros au endpoint PAR.
+3. Le navigateur est redirigé vers
+   `/authorize?client_id=…&request_uri=…`; les données sensibles du PAR ne
+   sont pas répétées dans l’URL.
+4. Au callback, Aegis consomme `state`, vérifie l’issuer de réponse, puis
+   échange le code avec le verifier PKCE et le handshake v4.
+5. L’access token est vérifié en RS256 via le JWKS. Tous les claims et scopes
+   obligatoires sont contrôlés avant d’utiliser l’identité.
+6. Aegis trouve ou crée l’utilisateur lié à `sub`, émet sa session locale et
+   redirige vers le chemin `next` préalablement validé.
 
-## Checklist for the first integration test
+## Rôles et cycle de vie
 
-1. `curl -s https://kyros.example.com/realms/aegis/.well-known/openid-configuration`
-   must return JSON containing `authorization_endpoint`, `token_endpoint`,
-   `jwks_uri`, `issuer`.
-2. `GET /api/v1/admin/kyros` in Aegis must report `discovery: ok`.
-3. `GET /api/v1/auth/kyros/start` must redirect without an error page.
-4. After callback, `GET /api/v1/me` must return the new user and
-   `has_kyros_identity: true`.
-5. `identities` must contain exactly one row for `provider=kyros`.
+Les rôles ou groupes Kyros ne sont pas importés. Un nouvel utilisateur Kyros
+reçoit le rôle Aegis `user`; les droits administrateur restent gérés dans
+Aegis. La déconnexion ferme la session Aegis. Les access/refresh tokens Kyros
+ne sont ni stockés ni renouvelés, puisque seule la session locale est utilisée
+après la connexion.
+
+## Vérifications de mise en production
+
+1. Vérifier que la découverte annonce `v4`, `S256`, PAR, un JWKS et `RS256`.
+2. Confirmer l’URI de callback exacte et les trois valeurs
+   client/audiences avec l’enregistrement Kyros.
+3. Tester le parcours avec un utilisateur possédant tous les scopes requis,
+   puis avec un scope manquant.
+4. Tester une rotation de clé JWKS : Aegis recharge immédiatement le JWKS si
+   le `kid` reçu n’est pas dans son cache de cinq minutes.
+5. Couper Kyros et confirmer que le login local reste utilisable et que les
+   tunnels existants ne sont pas affectés.
+
+Les tests unitaires utilisent un faux serveur Kyros v4 et une vraie paire RSA.
+Un test bout en bout contre l’instance Kyros de production reste nécessaire.

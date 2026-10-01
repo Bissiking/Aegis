@@ -1,6 +1,6 @@
 // Package auth implements authentication primitives for Aegis: Argon2id
 // password hashing, server-side sessions, CSRF, login throttling and a generic
-// OIDC/OAuth2 adapter used for Kyros.
+// native Kyros SSO v4 adapter.
 package auth
 
 import (

@@ -34,7 +34,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	kyros := map[string]any{"enabled": false, "button_label": ""}
 	if s.kyros != nil && s.kyros.Enabled() {
 		kyros["enabled"] = true
-		kyros["button_label"] = s.kyros.Config().ButtonLabel
+		kyros["button_label"] = "Se connecter avec Kyros"
 	}
 	writeJSON(w, http.StatusOK, Envelope{
 		Data: map[string]any{
@@ -204,7 +204,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 // ------------------------------------------------------------------ kyros
 
-// handleKyrosStart begins the OIDC authorization code + PKCE flow.
+// handleKyrosStart begins the native Kyros v4 PAR + authorization code flow.
 func (s *Server) handleKyrosStart(w http.ResponseWriter, r *http.Request) {
 	if s.kyros == nil || !s.kyros.Enabled() {
 		s.fail(w, r, service.ErrForbidden)
@@ -217,7 +217,7 @@ func (s *Server) handleKyrosStart(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, service.ErrUnavailable)
 		return
 	}
-	if err := s.svc.Store.SaveOAuthState(ctx, auth.HashState(pkce.State), pkce.Verifier, pkce.Nonce,
+	if err := s.svc.Store.SaveOAuthState(ctx, auth.HashState(pkce.State), pkce.Verifier, "",
 		safeRedirect(r.URL.Query().Get("next")), time.Now().Unix(), time.Now().Add(10*time.Minute).Unix()); err != nil {
 		s.fail(w, r, err)
 		return
@@ -229,31 +229,40 @@ func (s *Server) handleKyrosStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleKyrosCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if q.Get("error") != "" {
-		http.Redirect(w, r, "/?error=kyros", http.StatusFound)
+		http.Redirect(w, r, "/login?error=denied", http.StatusFound)
 		return
 	}
 	code, state := q.Get("code"), q.Get("state")
 	if code == "" || state == "" {
-		http.Redirect(w, r, "/?error=kyros", http.StatusFound)
+		http.Redirect(w, r, "/login?error=kyros", http.StatusFound)
 		return
 	}
 	ctx := r.Context()
-	verifier, nonce, redirectTo, err := s.svc.Store.ConsumeOAuthState(ctx, auth.HashState(state))
+	verifier, _, redirectTo, err := s.svc.Store.ConsumeOAuthState(ctx, auth.HashState(state))
 	if err != nil {
-		http.Redirect(w, r, "/?error=state", http.StatusFound)
+		http.Redirect(w, r, "/login?error=state", http.StatusFound)
 		return
 	}
-	ident, err := s.kyros.Complete(ctx, code, verifier, nonce)
+	if err := s.kyros.ValidateCallbackIssuer(q.Get("iss")); err != nil {
+		s.log.Warn("kyros callback issuer rejected", "err", err)
+		http.Redirect(w, r, "/login?error=issuer", http.StatusFound)
+		return
+	}
+	ident, err := s.kyros.Complete(ctx, code, verifier)
 	if err != nil {
 		s.log.Error("kyros callback failed", "err", err)
-		http.Redirect(w, r, "/?error=kyros", http.StatusFound)
+		code := "token"
+		if errors.Is(err, auth.ErrKyrosUnavailable) {
+			code = "unavailable"
+		}
+		http.Redirect(w, r, "/login?error="+code, http.StatusFound)
 		return
 	}
 	user, err := s.svc.LoginKyros(ctx, ident.Email, ident.Subject, ident.Name, true)
 	if err != nil {
 		s.svc.Audit(ctx, service.Actor{Kind: "kyros", IP: auth.ClientIP(r, s.trustPrx), CorrelationID: reqID(r)},
 			"auth.login_failed", "user", "", map[string]any{"provider": "kyros"})
-		http.Redirect(w, r, "/?error=denied", http.StatusFound)
+		http.Redirect(w, r, "/login?error=denied", http.StatusFound)
 		return
 	}
 	if _, err := s.startSession(w, r, user); err != nil {

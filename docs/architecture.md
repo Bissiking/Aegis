@@ -9,7 +9,7 @@
         ┌─────────────────────────────────────────┐
         │  aegis  (Go, user aegis, no capabilities)│
         │  ├─ internal/api      HTTP + JSON        │
-        │  ├─ internal/auth     session, CSRF, OIDC│
+        │  ├─ internal/auth     session, CSRF, Kyros v4│
         │  ├─ internal/service  domain rules       │
         │  ├─ internal/store    SQLite (WAL)       │
         │  └─ static SPA        web/dist           │
@@ -57,7 +57,7 @@ by an embedded migration runner (forward-only, recorded in `schema_migrations`).
 | ------------------- | -------------------------------------------------------------- |
 | `access_policies`   | max devices, monthly quota, rate limits, expiry, allowed nets   |
 | `users`             | local/Kyros accounts, role, status, quota override              |
-| `identities`        | OIDC subject ↔ user link (`provider=kyros`)                     |
+| `identities`        | Kyros subject ↔ user link (`provider=kyros`)                    |
 | `local_credentials` | Argon2id hash, failed attempts, lockout                         |
 | `vpn_servers`       | endpoint, CIDR, DNS, interface, profile TTL                     |
 | `devices`           | user-visible device, delivery timestamp, effective state        |
@@ -66,7 +66,7 @@ by an embedded migration runner (forward-only, recorded in `schema_migrations`).
 | `monthly_usage`     | per-user, per-month accumulator feeding quotas                  |
 | `audit_events`      | append-only trail (actor, action, target, correlation id)       |
 | `sessions`          | SHA-256 of the cookie token + CSRF token + idle expiry          |
-| `oauth_states`      | hashed OIDC state, PKCE verifier, nonce, expiry                 |
+| `oauth_states`      | hashed Kyros state, PKCE verifier, expiry                       |
 | `settings`          | key/value (reserved)                                            |
 
 Counters are cumulative; `AddSnapshot` computes deltas and flags a

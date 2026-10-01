@@ -11,7 +11,7 @@ The stack is deliberately small:
 | Web panel    | `aegis` (Go + SQLite)           | unprivileged user `aegis`, no caps  |
 | Agent        | `aegis-agent` (Go)              | root, only `CAP_NET_ADMIN/RAW`       |
 | Frontend     | React SPA, served by `aegis`    | static files only                   |
-| Identity     | local admin + Kyros (generic OIDC) | —                               |
+| Identity     | local admin + native Kyros SSO v4 | —                                |
 
 The panel never executes a command. Every privileged operation (adding a peer
 to `wg`, rewriting `/etc/wireguard`, shaping with `tc`) travels over a Unix
@@ -73,7 +73,7 @@ See [docs/deployment.md](docs/deployment.md).
 cmd/aegis/            web panel entry point (never root)
 cmd/aegis-agent/      privileged agent: only place allowed to exec processes
 internal/api/         HTTP router, middleware, handlers, OpenAPI, security tests
-internal/auth/        Argon2id passwords, sessions/CSRF/rate limit, OIDC adapter
+internal/auth/        Argon2id passwords, sessions/CSRF/rate limit, Kyros v4
 internal/config/      environment + optional key=value file
 internal/crypto/      WireGuard X25519 key generation
 internal/service/     business logic (devices, policies, quotas, collector)
@@ -161,5 +161,5 @@ credentials available).
 | [docs/security.md](docs/security.md)              | threat model, mitigations, residual risks          |
 | [docs/deployment.md](docs/deployment.md)          | install, reverse proxy, systemd, upgrades          |
 | [docs/api.md](docs/api.md)                        | HTTP surface, envelopes, error codes              |
-| [docs/kyros-integration.md](docs/kyros-integration.md) | generic OIDC adapter and what Kyros must provide |
+| [docs/kyros-integration.md](docs/kyros-integration.md) | native Kyros SSO v4 contract and deployment checks |
 | [docs/backup-restore.md](docs/backup-restore.md)  | backup, restore, disaster recovery                 |

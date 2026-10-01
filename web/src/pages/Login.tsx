@@ -47,6 +47,12 @@ export default function Login() {
               ? 'La session d’authentification a expiré. Réessayez.'
               : oauthError === 'denied'
                 ? 'Accès refusé par Kyros ou compte non autorisé.'
+                : oauthError === 'issuer'
+                  ? 'La réponse Kyros provient d’un émetteur inattendu. Contactez un administrateur.'
+                  : oauthError === 'unavailable'
+                    ? 'Kyros est temporairement indisponible. Vous pouvez utiliser la connexion locale.'
+                    : oauthError === 'token'
+                      ? 'Le jeton Kyros est invalide ou ne possède pas les autorisations requises.'
                 : 'La connexion Kyros a échoué.'}
           </div>
         )}

@@ -40,15 +40,26 @@ type Config struct {
 	LoginRateLimitPerMinute int
 	APIRateLimitPerMinute   int
 
-	// Kyros (generic OIDC/OAuth2 adapter)
-	KyrosEnabled                 bool
-	KyrosIssuer                  string
-	KyrosClientID                string
-	KyrosClientSecret            string
-	KyrosRedirectURL             string
-	KyrosScopes                  []string
-	KyrosButtonLabel             string
-	KyrosInsecureSkipIssuerCheck bool
+	// Kyros SSO v4. These fields follow the shared Kyros contract; the
+	// callback URL is derived from PublicBaseURL and is not Kyros-specific.
+	KyrosEnabled          bool
+	KyrosSSOVersion       string
+	KyrosBaseURL          string
+	KyrosClientID         string
+	KyrosClientSecret     string
+	KyrosIssuer           string
+	KyrosAudience         string
+	KyrosResourceAudience string
+	KyrosRequestedScopes  []string
+	KyrosRequiredScopes   []string
+	KyrosEdition          string
+	KyrosApplicationScope string
+	KyrosTimeout          time.Duration
+	KyrosAuthorizeURL     string
+	KyrosTokenURL         string
+	KyrosPARURL           string
+	KyrosJWKSURL          string
+	KyrosRedirectURL      string
 
 	// WireGuard
 	WGInterface           string
@@ -199,14 +210,24 @@ func Load(path string) (*Config, error) {
 		LoginRateLimitPerMinute: getInt("AEGIS_LOGIN_RATE_LIMIT", 10),
 		APIRateLimitPerMinute:   getInt("AEGIS_API_RATE_LIMIT", 300),
 
-		KyrosEnabled:                 strings.EqualFold(get("AUTH_PROVIDER", ""), "kyros"),
-		KyrosIssuer:                  get("KYROS_ISSUER", ""),
-		KyrosClientID:                get("KYROS_CLIENT_ID", ""),
-		KyrosClientSecret:            get("KYROS_CLIENT_SECRET", ""),
-		KyrosRedirectURL:             get("KYROS_REDIRECT_URI", strings.TrimRight(get("AEGIS_PUBLIC_URL", "https://vpn.example.com"), "/")+"/api/v1/auth/kyros/callback"),
-		KyrosScopes:                  getSpaceList("KYROS_REQUESTED_SCOPE", []string{"profile", "email"}),
-		KyrosButtonLabel:             get("AEGIS_KYROS_BUTTON_LABEL", "Se connecter avec Kyros"),
-		KyrosInsecureSkipIssuerCheck: getBool("AEGIS_KYROS_SKIP_ISSUER_CHECK", false),
+		KyrosEnabled:          strings.EqualFold(get("AUTH_PROVIDER", ""), "kyros"),
+		KyrosSSOVersion:       get("KYROS_SSO_VERSION", "v4"),
+		KyrosBaseURL:          strings.TrimRight(get("KYROS_BASE_URL", ""), "/"),
+		KyrosClientID:         get("KYROS_CLIENT_ID", ""),
+		KyrosClientSecret:     get("KYROS_CLIENT_SECRET", ""),
+		KyrosIssuer:           get("KYROS_ISSUER", ""),
+		KyrosAudience:         get("KYROS_AUDIENCE", ""),
+		KyrosResourceAudience: get("KYROS_RESOURCE_AUDIENCE", ""),
+		KyrosRequestedScopes:  getSpaceList("KYROS_REQUESTED_SCOPE", []string{"profile", "email"}),
+		KyrosRequiredScopes:   getSpaceList("KYROS_REQUIRED_SCOPES", []string{"profile", "email"}),
+		KyrosEdition:          get("KYROS_EDITION", "standard"),
+		KyrosApplicationScope: get("KYROS_APPLICATION_SCOPE", "standard"),
+		KyrosTimeout:          time.Duration(getInt("KYROS_TIMEOUT_SECONDS", 5)) * time.Second,
+		KyrosAuthorizeURL:     get("KYROS_AUTHORIZE_URL", ""),
+		KyrosTokenURL:         get("KYROS_TOKEN_URL", ""),
+		KyrosPARURL:           get("KYROS_PAR_URL", ""),
+		KyrosJWKSURL:          get("KYROS_JWKS_URL", ""),
+		KyrosRedirectURL:      strings.TrimRight(get("AEGIS_PUBLIC_URL", "https://vpn.example.com"), "/") + "/api/v1/auth/kyros/callback",
 
 		WGInterface:           get("AEGIS_WG_INTERFACE", "wg0"),
 		WGEgressIface:         get("AEGIS_WG_EGRESS_IFACE", ""),
@@ -242,14 +263,31 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("AEGIS_SESSION_SECRET must be at least 32 characters")
 	}
 	if c.KyrosEnabled {
-		if c.KyrosIssuer == "" {
-			return nil, fmt.Errorf("KYROS_ISSUER is required when AUTH_PROVIDER=kyros")
+		required := map[string]string{
+			"KYROS_BASE_URL":          c.KyrosBaseURL,
+			"KYROS_CLIENT_ID":         c.KyrosClientID,
+			"KYROS_ISSUER":            c.KyrosIssuer,
+			"KYROS_AUDIENCE":          c.KyrosAudience,
+			"KYROS_RESOURCE_AUDIENCE": c.KyrosResourceAudience,
+			"KYROS_EDITION":           c.KyrosEdition,
+			"KYROS_APPLICATION_SCOPE": c.KyrosApplicationScope,
 		}
-		if c.KyrosClientID == "" {
-			return nil, fmt.Errorf("KYROS_CLIENT_ID is required when AUTH_PROVIDER=kyros")
+		for name, value := range required {
+			if value == "" {
+				return nil, fmt.Errorf("%s is required when AUTH_PROVIDER=kyros", name)
+			}
 		}
-		if c.KyrosRedirectURL == "" {
-			return nil, fmt.Errorf("KYROS_REDIRECT_URI or AEGIS_PUBLIC_URL is required when AUTH_PROVIDER=kyros")
+		if c.KyrosSSOVersion != "v4" {
+			return nil, fmt.Errorf("KYROS_SSO_VERSION must be v4")
+		}
+		if len(c.KyrosRequestedScopes) == 0 {
+			return nil, fmt.Errorf("KYROS_REQUESTED_SCOPE must contain at least one scope")
+		}
+		if len(c.KyrosRequiredScopes) == 0 {
+			return nil, fmt.Errorf("KYROS_REQUIRED_SCOPES must contain at least one scope")
+		}
+		if c.KyrosTimeout <= 0 {
+			return nil, fmt.Errorf("KYROS_TIMEOUT_SECONDS must be greater than zero")
 		}
 	}
 	if err := validateNetwork(c.WGNetwork); err != nil {
