@@ -80,7 +80,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route
-          path="/"
+          path="/*"
           element={
             user ? (
               <Layout>
