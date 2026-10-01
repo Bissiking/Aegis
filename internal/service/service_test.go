@@ -449,6 +449,60 @@ func TestCollectOnceSurvivesAgentRestart(t *testing.T) {
 	}
 }
 
+func TestKyrosLinksExistingLocalUserByEmail(t *testing.T) {
+	svc, _, st := newSvc(t)
+	ctx := context.Background()
+	local := createUser(t, svc, "same@example.org")
+	svc.Cfg.KyrosEnabled = true
+
+	got, err := svc.LoginKyros(ctx, "same@example.org", "kyros-subject-1", "Kyros User", true)
+	if err != nil {
+		t.Fatalf("LoginKyros: %v", err)
+	}
+	if got.ID != local.ID {
+		t.Fatalf("expected existing user %s, got %s", local.ID, got.ID)
+	}
+
+	ident, err := st.GetIdentity(ctx, "kyros", "kyros-subject-1")
+	if err != nil {
+		t.Fatalf("linked identity: %v", err)
+	}
+	if ident.UserID != local.ID {
+		t.Fatalf("identity linked to %s, expected %s", ident.UserID, local.ID)
+	}
+
+	users, total, err := st.ListUsers(ctx, store.UserFilter{})
+	if err != nil {
+		t.Fatalf("list users: %v", err)
+	}
+	_ = users
+	// Bootstrap admin + the existing local user; no duplicate Kyros user.
+	if total != 2 {
+		t.Fatalf("expected 2 users after linking, got %d", total)
+	}
+}
+
+func TestKyrosDoesNotRelinkExistingUserToDifferentSubject(t *testing.T) {
+	svc, _, st := newSvc(t)
+	ctx := context.Background()
+	local := createUser(t, svc, "same@example.org")
+	svc.Cfg.KyrosEnabled = true
+
+	if err := st.CreateIdentity(ctx, &store.Identity{
+		ID:              store.NewID("idn"),
+		UserID:          local.ID,
+		Provider:        "kyros",
+		ProviderSubject: "kyros-subject-1",
+		Email:           local.Email,
+	}); err != nil {
+		t.Fatalf("seed identity: %v", err)
+	}
+
+	if _, err := svc.LoginKyros(ctx, local.Email, "kyros-subject-2", "Other", true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden for different Kyros subject, got %v", err)
+	}
+}
+
 func TestKyrosOutageDoesNotTouchTunnels(t *testing.T) {
 	svc, fake, _ := newSvc(t)
 	ctx := context.Background()
