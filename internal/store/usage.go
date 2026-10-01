@@ -104,7 +104,7 @@ func (s *Store) ListMonthlyUsage(ctx context.Context, userID string, limit int) 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*MonthlyUsage
+	out := make([]*MonthlyUsage, 0)
 	for rows.Next() {
 		u := &MonthlyUsage{}
 		if err := rows.Scan(&u.UserID, &u.Month, &u.RxBytes, &u.TxBytes, &u.TotalBytes, &u.UpdatedAt); err != nil {
@@ -126,7 +126,7 @@ func (s *Store) ListMonthlyUsageAll(ctx context.Context, month string, limit int
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*MonthlyUsage
+	out := make([]*MonthlyUsage, 0)
 	for rows.Next() {
 		u := &MonthlyUsage{}
 		if err := rows.Scan(&u.UserID, &u.Month, &u.RxBytes, &u.TxBytes, &u.TotalBytes, &u.UpdatedAt); err != nil {
