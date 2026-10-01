@@ -108,7 +108,7 @@ func (s *Store) ListDevices(ctx context.Context, f DeviceFilter) ([]*Device, int
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var out []*Device
+	out := make([]*Device, 0)
 	for rows.Next() {
 		d, err := scanDevice(rows)
 		if err != nil {
@@ -253,7 +253,7 @@ func (s *Store) ListAllPeers(ctx context.Context) ([]*WireGuardPeer, error) {
 }
 
 func collectPeers(rows *sql.Rows) ([]*WireGuardPeer, error) {
-	var out []*WireGuardPeer
+	out := make([]*WireGuardPeer, 0)
 	for rows.Next() {
 		p, err := scanPeer(rows)
 		if err != nil {
