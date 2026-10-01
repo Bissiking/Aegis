@@ -1,0 +1,368 @@
+openapi: 3.0.3
+info:
+  title: Aegis VPN API
+  version: "1.0.0"
+  description: |
+    Versioned JSON API of the Aegis WireGuard management panel.
+
+    All responses share the same envelope:
+    - success: `{"data": ..., "meta": {...}, "request_id": "..."}`
+    - failure: `{"error": {"code": "...", "message": "...", "details": {...}}, "request_id": "..."}`
+
+    Authentication uses an `HttpOnly` session cookie plus the `X-CSRF-Token`
+    header on every state-changing request.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+tags:
+  - name: system
+  - name: auth
+  - name: me
+  - name: admin
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Application health (database, WireGuard, migrations)
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "503":
+          description: Degraded
+  /meta:
+    get:
+      tags: [system]
+      summary: Public frontend configuration
+      security: []
+      responses:
+        "200":
+          description: OK
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Local account login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Authenticated
+        "401": { description: Invalid credentials }
+        "429": { description: Rate limited }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Terminate the current session
+      responses:
+        "204": { description: Logged out }
+  /auth/session:
+    get:
+      tags: [auth]
+      summary: Current session, user and CSRF token
+      responses:
+        "200": { description: OK }
+        "401": { description: Not authenticated }
+  /auth/kyros/start:
+    get:
+      tags: [auth]
+      summary: Begin the Kyros OIDC flow (redirects to the provider)
+      security: []
+      responses:
+        "302": { description: Redirect to the authorization endpoint }
+  /auth/kyros/callback:
+    get:
+      tags: [auth]
+      summary: OIDC callback (redirects back to the panel)
+      security: []
+      responses:
+        "302": { description: Redirect }
+  /me:
+    get:
+      tags: [me]
+      summary: Current user
+      responses:
+        "200": { description: OK }
+    patch:
+      tags: [me]
+      summary: Update display name
+      responses:
+        "200": { description: OK }
+  /me/password:
+    post:
+      tags: [me]
+      summary: Change the caller's password (the current one is required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current, new]
+              properties:
+                current: { type: string }
+                new: { type: string }
+      responses:
+        "204": { description: Password changed, sessions are kept }
+        "400": { description: Password policy or missing current password }
+        "401": { description: Wrong current password }
+  /me/usage:
+    get:
+      tags: [me]
+      summary: Monthly consumption, quota, expiry and device limit
+      responses:
+        "200": { description: OK }
+  /me/devices:
+    get:
+      tags: [me]
+      summary: List the caller's devices
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [me]
+      summary: Create a device and receive its profile exactly once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 64 }
+                platform: { type: string, enum: [android, ios, windows, macos, linux, generic] }
+                server_id: { type: string }
+      responses:
+        "201":
+          description: Device created; `data.profile` contains the private key and QR code and is never returned again
+        "400": { description: Validation error }
+        "403": { description: Device limit reached or access denied }
+  /me/devices/{id}:
+    get:
+      tags: [me]
+      summary: Device detail with computed state
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [me]
+      summary: Delete a device
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Deleted }
+  /me/devices/{id}/profile:
+    get:
+      tags: [me]
+      summary: Always returns 410 — a configuration is delivered only once
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "410": { description: The profile was already delivered }
+  /me/devices/{id}/revoke:
+    post:
+      tags: [me]
+      summary: Revoke a device immediately
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Revoked }
+  /me/devices/{id}/rotate:
+    post:
+      tags: [me]
+      summary: Rotate keys and receive a new profile exactly once
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: New profile }
+        "410": { description: Device revoked }
+  /admin/stats:
+    get:
+      tags: [admin]
+      summary: Dashboard counters
+      responses:
+        "200": { description: OK }
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: List users (paginated)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string, enum: [admin, user] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, suspended] } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [admin]
+      summary: Create a user
+      responses:
+        "201": { description: Created }
+  /admin/users/{id}:
+    get:
+      tags: [admin]
+      summary: User detail with usage
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: OK }
+    patch:
+      tags: [admin]
+      summary: Update role, status, policy, quota or expiry
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [admin]
+      summary: Delete a user and all its peers
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Deleted }
+  /admin/users/{id}/suspend:
+    post:
+      tags: [admin]
+      summary: Suspend a user and remove its peers from the interface
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: OK }
+  /admin/users/{id}/resume:
+    post:
+      tags: [admin]
+      summary: Resume a suspended user
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: OK }
+  /admin/policies:
+    get:
+      tags: [admin]
+      summary: List access policies
+      responses: { "200": { description: OK } }
+    post:
+      tags: [admin]
+      summary: Create an access policy
+      responses: { "201": { description: Created } }
+  /admin/policies/{id}:
+    patch:
+      tags: [admin]
+      summary: Update an access policy
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [admin]
+      summary: Delete an access policy
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses: { "204": { description: Deleted } }
+  /admin/servers:
+    get:
+      tags: [admin]
+      summary: List WireGuard servers with live status
+      responses: { "200": { description: OK } }
+    post:
+      tags: [admin]
+      summary: Register an additional VPN endpoint
+      responses: { "201": { description: Created } }
+  /admin/servers/{id}:
+    patch:
+      tags: [admin]
+      summary: Update a VPN endpoint
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses: { "200": { description: OK } }
+  /admin/devices:
+    get:
+      tags: [admin]
+      summary: List every device
+      responses: { "200": { description: OK } }
+  /admin/devices/{id}/revoke:
+    post:
+      tags: [admin]
+      summary: Revoke any device
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses: { "204": { description: Revoked } }
+  /admin/devices/{id}/rotate:
+    post:
+      tags: [admin]
+      summary: Rotate any device profile
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses: { "200": { description: New profile } }
+  /admin/peers:
+    get:
+      tags: [admin]
+      summary: Live peer list with handshake and traffic counters
+      responses: { "200": { description: OK } }
+  /admin/wireguard:
+    get:
+      tags: [admin]
+      summary: WireGuard interface status
+      responses: { "200": { description: OK } }
+  /admin/usage:
+    get:
+      tags: [admin]
+      summary: Monthly usage aggregated per user
+      parameters:
+        - { name: month, in: query, schema: { type: string, example: "2026-10" } }
+      responses: { "200": { description: OK } }
+  /admin/audit:
+    get:
+      tags: [admin]
+      summary: Audit journal (append only)
+      parameters:
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: integer } }
+        - { name: to, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses: { "200": { description: OK } }
+  /admin/kyros:
+    get:
+      tags: [admin]
+      summary: Kyros integration status (no secrets)
+      responses: { "200": { description: OK } }
+  /admin/sessions/prune:
+    get:
+      tags: [admin]
+      summary: Delete expired sessions and stale OAuth states
+      responses: { "200": { description: Number of removed rows } }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: aegis_session
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        data: { type: object }
+        meta: { type: object }
+        request_id: { type: string }
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object }
+        request_id: { type: string }

@@ -1,0 +1,46 @@
+[Unit]
+Description=Aegis VPN panel (unprivileged web service)
+Documentation=https://github.com/aegis-vpn/aegis
+After=network-online.target aegis-agent.service
+Wants=network-online.target
+Requires=aegis-agent.service
+
+[Service]
+Type=simple
+User=aegis
+Group=aegis
+WorkingDirectory=/var/lib/aegis
+Environment=AEGIS_CONFIG=/etc/aegis/aegis.env
+ExecStart=/usr/local/bin/aegis
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+UMask=0077
+
+# The panel must never gain privileges: every privileged operation is delegated
+# to aegis-agent through its socket.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/aegis /run/aegis
+StateDirectory=aegis
+
+[Install]
+WantedBy=multi-user.target

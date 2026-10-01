@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          out=$(gofmt -l ./cmd ./internal)
+          if [ -n "$out" ]; then echo "gofmt needed on:"; echo "$out"; exit 1; fi
+      - name: vet
+        run: go vet ./cmd/... ./internal/...
+      - name: build
+        run: go build ./...
+      - name: test
+        run: go test -count=1 -race ./cmd/... ./internal/...
+
+  frontend:
+    name: frontend (node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: lint
+        run: npm run lint
+      - name: typecheck
+        run: npm run typecheck
+      - name: unit tests
+        run: npm test
+      - name: build
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
+
+  agent-build:
+    name: agent (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build agent for linux
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/aegis ./cmd/aegis
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/aegis-agent ./cmd/aegis-agent
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: bin/
+          retention-days: 7

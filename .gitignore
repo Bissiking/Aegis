@@ -1,0 +1,28 @@
+# Build outputs
+/bin/
+/dist/
+/build/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Runtime data (never commit)
+/.smoke/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+aegis.env
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,53 @@
+[Unit]
+Description=Aegis privileged WireGuard agent
+Documentation=https://github.com/aegis-vpn/aegis
+After=network-online.target
+Wants=network-online.target
+Before=aegis.service
+
+[Service]
+Type=simple
+# The agent is the only privileged process of the stack. It validates every
+# request against a closed operation set, never builds a shell command line
+# and executes wg/tc/sysctl/iptables with fixed, typed arguments.
+#
+# Every flag has an environment counterpart (AEGIS_AGENT_LISTEN,
+# AEGIS_WG_CONF_DIR, AEGIS_WG_BIN, AEGIS_TC_BIN, AEGIS_AGENT_TOKEN), so the
+# unit only needs the shared environment file.
+EnvironmentFile=-/etc/aegis/aegis.env
+ExecStart=/usr/local/bin/aegis-agent
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+# The socket must be reachable by the unprivileged panel: running with the
+# aegis group and a group-friendly umask yields /run/aegis/agent.sock in mode
+# 0770 root:aegis instead of root-only 0700.
+Group=aegis
+RuntimeDirectory=aegis
+RuntimeDirectoryMode=0750
+UMask=0007
+
+# Hardening. /etc and /run stay writable because wg writes
+# /etc/wireguard/*.conf, iptables takes /run/xtables.lock and the tunnel
+# PostUp writes net.ipv4.ip_forward through /proc/sys. Everything else is
+# locked down and only CAP_NET_ADMIN/CAP_NET_RAW are available.
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
