@@ -95,7 +95,7 @@ func (s *Store) ListAudit(ctx context.Context, f AuditFilter) ([]*AuditEvent, in
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var out []*AuditEvent
+	out := make([]*AuditEvent, 0)
 	for rows.Next() {
 		e := &AuditEvent{}
 		if err := rows.Scan(&e.ID, &e.Ts, &e.ActorUserID, &e.ActorKind, &e.Action, &e.TargetKind,
