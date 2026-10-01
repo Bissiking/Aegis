@@ -31,11 +31,11 @@ assumed anywhere in the code. Collect it from the Kyros client registration:
 
 | Value              | Where it goes                                   | Notes |
 | ------------------ | ----------------------------------------------- | ----- |
-| Issuer URL         | `AEGIS_KYROS_ISSUER`                            | must serve `/.well-known/openid-configuration` |
-| Client ID          | `AEGIS_KYROS_CLIENT_ID`                         | public identifier of the Aegis client |
-| Client secret      | `AEGIS_KYROS_CLIENT_SECRET`                     | only if Kyros marks the client as confidential |
-| Redirect URI       | `AEGIS_KYROS_REDIRECT_URL`                      | must match the registration **exactly**: `https://<your-domain>/api/v1/auth/kyros/callback` |
-| Scopes             | `AEGIS_KYROS_SCOPES`                            | space separated; `openid` is mandatory |
+| Issuer URL         | `KYROS_ISSUER`                            | must serve `/.well-known/openid-configuration` |
+| Client ID          | `KYROS_CLIENT_ID`                         | public identifier of the Aegis client |
+| Client secret      | `KYROS_CLIENT_SECRET`                     | only if Kyros marks the client as confidential |
+| Redirect URI       | `KYROS_REDIRECT_URI`                      | must match the registration **exactly**: `https://<your-domain>/api/v1/auth/kyros/callback` |
+| Scopes             | `KYROS_REQUESTED_SCOPE`                            | space separated; `openid` is mandatory |
 | Button label       | `AEGIS_KYROS_BUTTON_LABEL`                      | shown on the login page |
 | Is PKCE required?  | —                                               | Aegis always sends `code_challenge_method=S256`; confirm Kyros accepts it |
 | Claim: `sub`       | read as the stable identity                     | **must** be present and stable |
@@ -48,18 +48,18 @@ assumed anywhere in the code. Collect it from the Kyros client registration:
 ## Configuration
 
 ```ini
-AEGIS_KYROS_ENABLED=true
-AEGIS_KYROS_ISSUER=https://kyros.example.com/realms/aegis
-AEGIS_KYROS_CLIENT_ID=aegis-panel
-AEGIS_KYROS_CLIENT_SECRET=<from the Kyros registration>
-AEGIS_KYROS_REDIRECT_URL=https://vpn.example.com/api/v1/auth/kyros/callback
-AEGIS_KYROS_SCOPES=openid profile email
+AUTH_PROVIDER=kyros
+KYROS_ISSUER=kyros
+KYROS_CLIENT_ID=aegis-panel
+KYROS_CLIENT_SECRET=<from the Kyros registration>
+KYROS_REDIRECT_URI=https://vpn.example.com/api/v1/auth/kyros/callback
+KYROS_REQUESTED_SCOPE=profile email
 AEGIS_KYROS_BUTTON_LABEL=Se connecter avec Kyros
 AEGIS_KYROS_SKIP_ISSUER_CHECK=false
 ```
 
-Restart the panel after editing. `AEGIS_KYROS_ENABLED=false` (the default)
-removes the button entirely and never contacts the IdP.
+Restart the panel after editing. Kyros is enabled when `AUTH_PROVIDER=kyros`.
+Any other value disables the Kyros login path.
 
 Local login stays available as long as `AEGIS_LOCAL_AUTH_ENABLED=true`, which
 is the recommended safety net while the IdP is being configured.
