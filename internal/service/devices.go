@@ -229,7 +229,7 @@ func (s *Service) CreateDevice(ctx context.Context, actor Actor, in CreateDevice
 	}
 	_ = s.syncPersistent(ctx, srv)
 
-	profile, err := s.renderProfile(srv, device, peer, keys)
+	profile, err := s.renderProfile(ctx, srv, device, peer, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +284,7 @@ func (s *Service) resolveServer(ctx context.Context, id string) (*store.VPNServe
 
 // renderProfile builds the client configuration and its QR code. The private
 // key exists only inside this function's inputs and its return value.
-func (s *Service) renderProfile(srv *store.VPNServer, dev *store.Device, peer *store.WireGuardPeer, keys wgkeys.KeyPair) (*DeviceProfile, error) {
+func (s *Service) renderProfile(ctx context.Context, srv *store.VPNServer, dev *store.Device, peer *store.WireGuardPeer, keys wgkeys.KeyPair) (*DeviceProfile, error) {
 	allowedIPs := "0.0.0.0/0"
 	if !srv.FullTunnel {
 		allowedIPs = srv.VPNCIDR
@@ -301,13 +301,22 @@ func (s *Service) renderProfile(srv *store.VPNServer, dev *store.Device, peer *s
 		endpoint = fmt.Sprintf("%s:%d", endpoint, srv.WGPort)
 	}
 
+	state, err := s.WG.ReadState(ctx, srv.WGInterface)
+	if err != nil {
+		return nil, fmt.Errorf("%w: read WireGuard server state: %v", ErrUnavailable, err)
+	}
+	serverPublicKey := strings.TrimSpace(state.PublicKey)
+	if serverPublicKey == "" {
+		return nil, fmt.Errorf("%w: WireGuard server public key unavailable", ErrUnavailable)
+	}
+
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	b.WriteString("PrivateKey = " + keys.EncodePrivate() + "\n")
 	b.WriteString("Address = " + peer.AllowedIP + ", fd77::" + hostSuffix(peer.AllowedIP) + "/128\n")
 	b.WriteString("DNS = " + srv.DNS + "\n")
 	b.WriteString("\n[Peer]\n")
-	b.WriteString("PublicKey = " + peer.PublicKey + "\n")
+	b.WriteString("PublicKey = " + serverPublicKey + "\n")
 	b.WriteString("AllowedIPs = " + allowedIPs + "\n")
 	if endpoint != "" {
 		b.WriteString("Endpoint = " + endpoint + "\n")
@@ -322,7 +331,7 @@ func (s *Service) renderProfile(srv *store.VPNServer, dev *store.Device, peer *s
 		return nil, err
 	}
 	return &DeviceProfile{
-		Filename:    "aegis-" + dev.Name + ".conf",
+		Filename:    wireGuardProfileFilename(dev.Name),
 		Conf:        conf,
 		QRPNGBase64: png,
 		Warned:      true,
@@ -338,6 +347,43 @@ func (s *Service) renderProfile(srv *store.VPNServer, dev *store.Device, peer *s
 // hostSuffix derives the trailing IPv6 hextet from an IPv4 host address so the
 // profile always carries a stable, valid IPv6 host address. ::/0 is never
 // announced.
+func wireGuardProfileFilename(name string) string {
+	base := "aegis-" + strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range base {
+		allowed := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') ||
+			r == '_' || r == '=' || r == '+' || r == '.' || r == '-'
+		if allowed {
+			if r == '-' {
+				if lastDash {
+					continue
+				}
+				lastDash = true
+			} else {
+				lastDash = false
+			}
+			b.WriteRune(r)
+		} else if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	base = strings.Trim(b.String(), "-.")
+	if base == "" || base == "aegis" {
+		base = "aegis-device"
+	}
+	// WireGuard tunnel names are interface names on several clients. Keep the
+	// basename within the Linux IFNAMSIZ-compatible 15 character limit.
+	if len(base) > 15 {
+		base = strings.TrimRight(base[:15], "-.")
+	}
+	if base == "" {
+		base = "aegis"
+	}
+	return base + ".conf"
+}
+
 func hostSuffix(ipv4CIDR string) string {
 	addr := ipv4CIDR
 	if i := strings.IndexByte(addr, '/'); i > 0 {
@@ -464,7 +510,7 @@ func (s *Service) RotateDevice(ctx context.Context, actor Actor, deviceID string
 	}
 	_ = s.syncPersistent(ctx, srv)
 
-	profile, err := s.renderProfile(srv, d, peer, keys)
+	profile, err := s.renderProfile(ctx, srv, d, peer, keys)
 	if err != nil {
 		return nil, err
 	}

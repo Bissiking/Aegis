@@ -96,7 +96,12 @@ func (f *Fake) ReadState(_ context.Context, iface string) (*State, error) {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	st := &State{Interface: iface, ListenPort: 51820, CollectedAt: f.clock()}
+	st := &State{
+		Interface: iface,
+		PublicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		ListenPort: 51820,
+		CollectedAt: f.clock(),
+	}
 	for pk, ip := range f.iface(iface) {
 		st.Peers = append(st.Peers, PeerState{
 			PublicKey:       pk,

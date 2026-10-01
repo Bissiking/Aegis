@@ -199,6 +199,7 @@ func (s *server) readState(iface string) (*wg.State, error) {
 		f := strings.Split(line, "\t")
 		if i == 0 {
 			if len(f) >= 4 {
+				st.PublicKey = f[1]
 				st.ListenPort, _ = strconv.Atoi(f[2])
 			}
 			continue

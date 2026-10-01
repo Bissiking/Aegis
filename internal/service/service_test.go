@@ -178,6 +178,33 @@ func TestProfileIsDeliveredExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestGeneratedProfileUsesServerPublicKeyAndSafeFilename(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	u := createUser(t, svc, "profile@example.org")
+	ctx := context.Background()
+
+	d, err := svc.CreateDevice(ctx, actorForUser(u), CreateDeviceInput{
+		UserID: u.ID,
+		Name:   "Bertha de poche",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Profile == nil {
+		t.Fatal("profile is nil")
+	}
+	const serverKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	if !contains(d.Profile.Conf, "PublicKey = "+serverKey+"\n") {
+		t.Fatalf("profile does not contain server public key: %s", d.Profile.Conf)
+	}
+	if contains(d.Profile.Conf, "PublicKey = "+d.Peer.PublicKey+"\n") {
+		t.Fatal("client profile must not use the client public key as [Peer] PublicKey")
+	}
+	if d.Profile.Filename != "aegis-bertha-de.conf" {
+		t.Fatalf("filename = %q", d.Profile.Filename)
+	}
+}
+
 func TestPrivateNeverStoredNorLogged(t *testing.T) {
 	svc, fake, st := newSvc(t)
 	u := createUser(t, svc, "secret@example.org")
