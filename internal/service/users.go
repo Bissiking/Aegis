@@ -94,8 +94,8 @@ func (s *Service) LoginKyros(ctx context.Context, email, subject, name string, a
 		_ = s.Store.UpdateUser(ctx, user)
 		return user, nil
 	}
-	if !errors.Is(existingErr, store.ErrNotFound) {
-		return nil, existingErr
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
 	}
 	if !autoProvision {
 		return nil, ErrUnauthorized
@@ -155,8 +155,8 @@ func (s *Service) LoginKyros(ctx context.Context, email, subject, name string, a
 		}
 		return existing, nil
 	}
-	if !errors.Is(err, store.ErrNotFound) {
-		return nil, err
+	if !errors.Is(existingErr, store.ErrNotFound) {
+		return nil, existingErr
 	}
 	return s.provisionKyrosUser(ctx, email, subject, name)
 }
