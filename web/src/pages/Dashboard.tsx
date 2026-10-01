@@ -15,7 +15,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     api<UsageOverview>('/api/v1/me/usage').then((r) => setUsage(r.data)).catch((e) => setErr(e.message))
-    api<Device[]>('/api/v1/me/devices?limit=5').then((r) => setDevices(r.data)).catch(() => undefined)
+    api<Device[]>('/api/v1/me/devices?limit=5').then((r) => setDevices(r.data ?? [])).catch(() => undefined)
     if (isAdmin) {
       api<Stats>('/api/v1/admin/stats').then((r) => setStats(r.data)).catch(() => undefined)
       api<any>('/api/v1/health').then((r) => setHealth(r.data)).catch(() => setHealth(null))
